@@ -1,6 +1,6 @@
 # fractalsort_cpu
 
-A CPU adaptation of the [FractalSort](https://ieeexplore.ieee.org/abstract/document/11348110/) algorithm, originally designed for FPGA/hardware accelerators. This project brings FractalSort to the CPU for accessibility and broader experimentation. It adopts the same histogram merge tree index for sorting and querying/retrieval, achieving lower DRAM bandwidth than radix sort by decomposing keys into a tree-ordered bin structure with compact trailing-bit entries.
+A CPU adaptation of the [FractalSort algorithm](https://ieeexplore.ieee.org/abstract/document/11348110/), originally designed for FPGA/hardware accelerators. This project brings FractalSort to the CPU for accessibility and broader experimentation. It adopts the same histogram merge tree index for sorting and querying/retrieval, achieving lower DRAM bandwidth than radix sort by decomposing keys into a tree-ordered bin structure with compact trailing-bit entries.
 
 ## Architecture
 
