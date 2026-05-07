@@ -13,8 +13,9 @@ Architecture:
   Finalize phase: radix-sort within each bin by entry value, producing
     an index array that maps sorted_position -> arrival_position.
 
-  Get item: binary search for bin, index lookup, reconstruct full key
-    from bin_id + sorted_position + trailing bits.
+  Get item: tree walk over segment tree of bin counts to find bin,
+    index lookup, reconstruct full key from bin_id + sorted_position
+    + trailing bits.
 """
 import numpy as np
 from numba import njit
@@ -147,29 +148,41 @@ def _finalize(sbatch_mem, bin_counts, n_bins, entry_bits):
     return index_array
 
 
+@njit(nogil=True)
+def _build_seg_tree(bin_counts, n_bins):
+    """Build segment tree from bin counts. 1-indexed: leaves at n_bins..2*n_bins-1."""
+    tree = np.zeros(2 * n_bins, dtype=np.int64)
+    for i in range(n_bins):
+        tree[n_bins + i] = bin_counts[i]
+    for i in range(n_bins - 1, 0, -1):
+        tree[i] = tree[2 * i] + tree[2 * i + 1]
+    return tree
+
+
 @njit(nogil=True, fastmath=True)
-def _get_item(sbatch_mem, index_array, bin_cumulative, n_bins,
+def _get_item(sbatch_mem, index_array, seg_tree, bin_cumulative, n_bins,
               ln, lb, p, ln_minus_lb, lut, position):
     """Get the key at a given sorted position.
 
-    1. Binary search to find bin
+    1. Tree walk over segment tree to find bin (O(log n_bins), cache-friendly)
     2. Index lookup for arrival position
     3. Extract trailing bits from entry
     4. Reconstruct full key from bin_id + offset + trailing
     """
     pos = np.int64(position)
 
-    # Binary search for bin
-    lo = np.int64(0)
-    hi = np.int64(n_bins - 1)
-    while lo < hi:
-        mid = (lo + hi + 1) >> 1
-        if bin_cumulative[mid] <= pos:
-            lo = mid
+    # Tree walk to find bin
+    node = np.int64(1)
+    while node < n_bins:
+        left = 2 * node
+        left_count = seg_tree[left]
+        if pos < left_count:
+            node = left
         else:
-            hi = mid - 1
-    bin_id = lo
-    bin_pos = pos - bin_cumulative[bin_id]
+            pos -= left_count
+            node = left + 1
+    bin_id = node - np.int64(n_bins)
+    bin_pos = pos
     bin_offset = bin_cumulative[bin_id]
 
     # Index lookup
@@ -251,12 +264,13 @@ class FractalSortResult:
     """Result of fractal sort. Supports indexed access to sorted keys."""
 
     def __init__(self, sbatch_mem, index_array, bin_counts, bin_cumulative,
-                 hist, ln, lb, p, n_bins, lut):
+                 hist, ln, lb, p, n_bins, lut, seg_tree):
         self.sbatch_mem = sbatch_mem
         self.index_array = index_array
         self.bin_counts = bin_counts
         self.bin_cumulative = bin_cumulative
         self.hist = hist
+        self.seg_tree = seg_tree
         self.ln = ln
         self.lb = lb
         self.p = p
@@ -281,10 +295,10 @@ class FractalSortResult:
         return self.get_item(position)
 
     def get_item(self, position):
-        """Get the key at a given sorted position. O(log n_bins)."""
-        return _get_item(self.sbatch_mem, self.index_array, self.bin_cumulative,
-                         self.n_bins, self.ln, self.lb, self.p,
-                         self.ln_minus_lb, self.lut, np.int64(position))
+        """Get the key at a given sorted position. O(log n_bins) via tree walk."""
+        return _get_item(self.sbatch_mem, self.index_array, self.seg_tree,
+                         self.bin_cumulative, self.n_bins, self.ln, self.lb,
+                         self.p, self.ln_minus_lb, self.lut, np.int64(position))
 
     def reconstruct_all(self):
         """Reconstruct all keys in sorted order. Returns uint32 array."""
@@ -352,10 +366,13 @@ def fractalsort(keys, p=32, lb=None, n_batches=4):
     # Finalize: sort within bins, produce index
     index_array = _finalize(sbatch_mem, bin_counts, n_bins, entry_bits)
 
-    # Cumulative bin starts (for get_item binary search)
+    # Cumulative bin starts (for index offset lookup)
     bin_cumulative = np.zeros(n_bins, dtype=np.int64)
     for i in range(1, n_bins):
         bin_cumulative[i] = bin_cumulative[i - 1] + bin_counts[i - 1]
+
+    # Segment tree for O(log n_bins) tree-walk get_item
+    seg_tree = _build_seg_tree(bin_counts, n_bins)
 
     return FractalSortResult(
         sbatch_mem=sbatch_mem,
@@ -363,5 +380,6 @@ def fractalsort(keys, p=32, lb=None, n_batches=4):
         bin_counts=bin_counts,
         bin_cumulative=bin_cumulative,
         hist=hist,
-        ln=ln, lb=lb, p=p, n_bins=n_bins, lut=lut
+        ln=ln, lb=lb, p=p, n_bins=n_bins, lut=lut,
+        seg_tree=seg_tree,
     )
