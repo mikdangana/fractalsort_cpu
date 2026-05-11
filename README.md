@@ -1,39 +1,30 @@
 # fractalsort_cpu
 
-A CPU adaptation of the [FractalSort algorithm](https://ieeexplore.ieee.org/abstract/document/11348110/), originally designed for FPGA/hardware accelerators. This project brings FractalSort to the CPU for accessibility and broader experimentation. It adopts the same histogram merge tree index for sorting and querying/retrieval, achieving lower DRAM bandwidth than radix sort by decomposing keys into a tree-ordered bin structure with compact trailing-bit entries.
+A CPU adaptation of the [FractalSort algorithm](https://ieeexplore.ieee.org/abstract/document/11348110/), originally designed for FPGA/hardware accelerators. This project brings FractalSort to the CPU for accessibility and broader experimentation. It adopts a histogram merge tree index for sorting and querying/retrieval, achieving lower DRAM bandwidth than radix sort by decomposing keys into MSB-based bins with compact entries and per-batch sorted runs.
 
 ## Architecture
 
-FractalSort decomposes each p-bit key into three parts:
+FractalSort decomposes each p-bit key into two parts:
 
 ```
 key (p bits):
-  ├─ bits 0..ln-lb-1      → bin_id  (tree-ordered, determines which bin)
-  ├─ bits ln-lb..ln-1      → offset  (lb bits, encoded by sorted position within bin)
-  └─ bits ln..p-1          → trailing (p-ln bits, stored in entry)
+  ├─ top (ln-lb) bits      → bin_id  (MSB, determines which bin)
+  └─ bottom entry_bits      → entry   (lb + (p-ln) bits, stored per key)
 ```
 
-Where `ln = ceil(log2(n))` and `lb = log2(b)` controls bin size.
+Where `ln = ceil(log2(n))`, `lb` controls bin size, and `entry_bits = lb + (p - ln)`.
+
+For small precisions (`p <= 20`), a direct histogram mode is used instead — no bins or scatter, just a counting histogram with O(n + 2^p) reconstruction.
 
 ### Phases
 
-1. **Process**: Single-pass direct scatter. For each key, compute `bin_id` (a register scalar, not stored), compute `entry = tree_offset | trailing`, write entry to the bin's region in `sbatch_mem`. Histogram updated in cache. DRAM: 4B read + entry write.
+1. **Process**: Single-pass direct scatter. For each key, extract `bin_id` from MSBs and `entry` from the remaining bits. Write entry to the bin's region in `sbatch_mem`. Keys are processed in batches, with each batch producing a sorted run per bin.
 
-2. **Finalize**: Radix-sort entries within each bin by entry value. Produces `index_array` mapping `sorted_position → arrival_position`. After finalize, sorted position encodes the offset bits (tree-walk order within bin).
+2. **Sort**: Radix-sort (or insertion sort for small bins) entries within each bin per batch. Sorted runs are concatenated — no global index array is needed.
 
-3. **Get item**: Binary search over cumulative bin counts to find the bin. Index lookup to find the entry. Reconstruct full key from `bin_id` (→ low bits) + `sorted_position` (→ offset bits) + `entry` (→ trailing bits).
+3. **Get item**: Segment tree walk over bin counts to find the bin (O(log n_bins)). K-way selection across sorted runs via binary search to find the entry at the target rank. Reconstruct key as `(bin_id << entry_bits) | entry`.
 
-### DRAM Bandwidth
-
-At e=30, p=32, lb=20 (1024 bins):
-
-| Phase | Operation | B/key |
-|-------|-----------|-------|
-| Process | Read key + write entry | ~4.25 |
-| Finalize | Read entry + write index | ~2.75 |
-| **Total** | | **~7 B/key** |
-
-vs radix sort at **32 B/key** inherent — **4.6× less bandwidth**.
+4. **Reconstruct all**: K-way merge of sorted runs across all bins to produce the full sorted output.
 
 ### Optimal lb Selection
 
@@ -41,9 +32,8 @@ The `lb` parameter controls the trade-off between bin count and entry size:
 
 | Rule | Bins | Use case |
 |------|------|----------|
-| `lb = e - 10` | 1024 | More cached counter levels |
-| `lb = e - 8` | 256 | Best bandwidth ratio vs radix |
-| `lb = e - 6` | 64 | Fewest bins, simplest scatter |
+| `lb = e - 10` | 1024 | Default for e <= 20 |
+| `lb = e - 6` | 64 | Default for e > 20, fewer bins |
 
 ## Requirements
 
@@ -86,7 +76,7 @@ assert np.array_equal(sorted_keys, np.sort(keys))
 result = fractalsort(
     keys,           # uint32 array of keys
     p=32,           # key precision in bits
-    lb=None,        # log2(bin size), default: e - 8
+    lb=None,        # log2(bin size), default: e-10 (e<=20) or e-6 (e>20)
     n_batches=4,    # processing batches (for streaming)
 )
 ```
@@ -94,7 +84,7 @@ result = fractalsort(
 ### Result object
 
 ```python
-result.get_item(position)    # O(log bins) point query
+result.get_item(position)    # O(log bins + k*log(bin_size)) point query
 result[i]                    # same via __getitem__
 result[10:20]                # slice access
 len(result)                  # total number of keys
@@ -104,15 +94,16 @@ result.reconstruct_all()     # all keys in sorted order
 ### Internal arrays (for advanced use)
 
 ```python
-result.sbatch_mem       # entry array (per-bin regions)
-result.index_array      # sorted_pos → arrival_pos mapping
-result.bin_counts       # entries per bin
-result.bin_cumulative   # cumulative bin starts
-result.hist             # per-bin histogram
-result.ln               # tree depth
-result.lb               # log2(bin size)
-result.entry_bits       # bits per entry (lb + trailing)
-result.n_bins           # number of bins
+result.sbatch_mem         # entry array (per-bin regions, sorted runs)
+result.bin_counts         # entries per bin
+result.bin_cumulative     # cumulative bin starts
+result.batch_boundaries   # [n_bins, n_batches+1] run boundaries per bin
+result.n_batches          # number of batches
+result.ln                 # tree depth
+result.lb                 # log2(bin size)
+result.entry_bits         # bits per entry
+result.n_bins             # number of bins
+result.seg_tree           # segment tree for O(log n_bins) bin lookup
 ```
 
 ## Testing
