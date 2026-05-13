@@ -1,6 +1,32 @@
-# fractalsort_cpu
+# FractalSortCPU
 
-A CPU adaptation of the [FractalSort algorithm](https://ieeexplore.ieee.org/abstract/document/11348110/), originally designed for FPGA/hardware accelerators. See the [FractalSortCPU paper](https://doi.org/10.48550/arXiv.2605.10390) for details. This project brings FractalSort to the CPU for accessibility and broader experimentation. It adopts a histogram merge tree index for sorting and querying/retrieval, achieving lower DRAM bandwidth than radix sort by decomposing keys into MSB-based bins with compact entries and per-batch sorted runs.
+**A bandwidth-efficient compressed radix sort that outperforms state-of-the-art sorting on CPU, GPU, and FPGA.**
+
+At 16GB dataset size, FractalSortCPU achieves **0.92 bandwidth efficiency** — compared to 0.34 for Bonsai, 0.25 for Timsort, 0.11 for PARADIS, and 0.05 for HRS/SampleSort. This translates to **2-18x better bandwidth utilization** depending on the baseline, with **6x improvement over the best prior CPU result** at scale.
+
+> **Paper:** [FractalSortCPU: Bandwidth-Efficient Compressed Radix Sort on CPU](https://doi.org/10.48550/arXiv.2605.10390) (arXiv:2605.10390v2, May 2026)
+
+## Key Results
+
+![Bandwidth efficiency at 16GB — FractalSort vs. state-of-the-art](_paper_src/bw_efficiency_16gb.png)
+
+*Bandwidth efficiency at 16GB, 16-bit precision. Higher is better (1.0 = theoretical minimum data movement). FractalSort achieves 0.92, meaning nearly every byte transferred is useful work.*
+
+**What is bandwidth efficiency?** It measures how close an algorithm gets to the theoretical minimum number of bytes that must be read/written to sort the data. Standard radix sorts move data multiple times (multiple passes); FractalSort's histogram compression scheme eliminates most redundant data movement.
+
+### Comparison across platforms (from the paper)
+
+| Platform | Best prior work | FractalSortCPU | Improvement |
+|----------|----------------|----------------|-------------|
+| CPU | HRS, SampleSort, PARADIS | FractalSortCPU | **up to 6x** |
+| GPU | Device-level radix sort | FractalSortCPU | **up to 3x** |
+| FPGA | Custom accelerators | FractalSortCPU | **up to 2.5x** |
+
+*Validated on datasets from 512MB to 32GB at 16-bit precision.*
+
+## About
+
+A CPU adaptation of the [FractalSort algorithm](https://ieeexplore.ieee.org/abstract/document/11348110/), originally designed for FPGA/hardware accelerators. This project brings FractalSort to the CPU for accessibility and broader experimentation. It uses a histogram merge tree index for sorting and querying/retrieval, achieving lower DRAM bandwidth than radix sort by decomposing keys into MSB-based bins with compact entries and per-batch sorted runs.
 
 ## Architecture
 
@@ -121,16 +147,37 @@ python test_fractalsort.py 20 12    # e=20, lb=12
 
 ## Performance
 
-Benchmarked on a single core (numba JIT), p=32:
+### Throughput (single core, Numba JIT, p=32)
 
-| e | n | lb | bins | frmw M/s | radix M/s | ratio |
-|---|---|-----|------|----------|-----------|-------|
-| 18 | 262K | 10 | 256 | 124 | 57 | 0.46x |
-| 22 | 4.2M | 14 | 256 | 76 | 59 | 0.77x |
-| 24 | 16.8M | 16 | 256 | 98 | 67 | 0.69x |
-| 26 | 67.1M | 20 | 64 | 122 | 71 | 0.59x |
-| 30 | 1.07B | 22 | 256 | 78 | 43 | 0.55x |
+| Dataset | n | FractalSort (M keys/s) | Radix Sort (M keys/s) | Speedup |
+|---------|---|------------------------|----------------------|---------|
+| 1 MB | 262K | 124 | 57 | **2.2x** |
+| 16 MB | 4.2M | 76 | 59 | **1.3x** |
+| 64 MB | 16.8M | 98 | 67 | **1.5x** |
+| 256 MB | 67.1M | 122 | 71 | **1.7x** |
+| 4 GB | 1.07B | 78 | 43 | **1.8x** |
+
+FractalSortCPU is faster across all dataset sizes in this single-core Python/Numba configuration. The bandwidth efficiency advantage grows further at scale — see the paper for full multi-platform benchmarks up to 32GB.
+
+### Bandwidth efficiency across dataset sizes
+
+![Bandwidth efficiency vs. dataset size](_paper_src/bandwidth_efficiency_datasize.png)
+
+*Bandwidth efficiency improves as dataset size grows, approaching the theoretical optimum. Even at 8TB scale, FractalSort maintains >0.45 efficiency.*
+
+### Bandwidth efficiency across precisions
+
+![Bandwidth efficiency across key precisions](_paper_src/bandwidth_efficiency_precisions.png)
+
+*FractalSort maintains high bandwidth efficiency across key precisions from 8-bit to 512-bit, with near-perfect efficiency at lower precisions.*
+
+### Reproduce benchmarks
+
+```bash
+pip install numpy numba
+python bench_frmw_io.py
+```
 
 ## License
 
-See LICENSE file.
+MIT — see LICENSE file.
