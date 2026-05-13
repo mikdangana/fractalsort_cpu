@@ -159,18 +159,6 @@ python test_fractalsort.py 20 12    # e=20, lb=12
 
 FractalSortCPU is faster across all dataset sizes in this single-core Python/Numba configuration. The bandwidth efficiency advantage grows further at scale — see the paper for full multi-platform benchmarks up to 32GB.
 
-### Bandwidth efficiency across dataset sizes
-
-![Bandwidth efficiency vs. dataset size](_paper_src/bandwidth_efficiency_datasize.png)
-
-*Bandwidth efficiency improves as dataset size grows, approaching the theoretical optimum. Even at 8TB scale, FractalSort maintains >0.45 efficiency.*
-
-### Bandwidth efficiency across precisions
-
-![Bandwidth efficiency across key precisions](_paper_src/bandwidth_efficiency_precisions.png)
-
-*FractalSort maintains high bandwidth efficiency across key precisions from 8-bit to 512-bit, with near-perfect efficiency at lower precisions.*
-
 ### Reproduce benchmarks
 
 ```bash
