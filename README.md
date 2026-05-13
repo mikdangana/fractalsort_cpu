@@ -8,14 +8,6 @@ At 16GB dataset size, FractalSortCPU achieves **0.92 bandwidth efficiency** — 
 
 ## Key Results
 
-![Bandwidth efficiency at 16GB — FractalSort vs. state-of-the-art](_paper_src/bw_efficiency_16gb.png)
-
-*Bandwidth efficiency at 16GB, 16-bit precision. Higher is better (1.0 = theoretical minimum data movement). FractalSort achieves 0.92, meaning nearly every byte transferred is useful work.*
-
-**What is bandwidth efficiency?** It measures how close an algorithm gets to the theoretical minimum number of bytes that must be read/written to sort the data. Standard radix sorts move data multiple times (multiple passes); FractalSort's histogram compression scheme eliminates most redundant data movement.
-
-### Comparison across platforms (from the paper)
-
 | Platform | Best prior work | FractalSortCPU | Improvement |
 |----------|----------------|----------------|-------------|
 | CPU | HRS, SampleSort, PARADIS | FractalSortCPU | **up to 6x** |
