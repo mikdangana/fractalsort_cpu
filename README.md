@@ -1,6 +1,6 @@
 # FractalSortCPU
 
-**A bandwidth-efficient compressed radix sort that outperforms state-of-the-art sorting on CPU, GPU, and FPGA.**
+**A bandwidth-efficient compressed radix sort that outperforms state-of-the-art sorting algorithms across platforms.**
 
 At 16GB dataset size, FractalSortCPU achieves **0.92 bandwidth efficiency** — compared to 0.34 for Bonsai, 0.25 for Timsort, 0.11 for PARADIS, and 0.05 for HRS/SampleSort. This translates to **2-18x better bandwidth utilization** depending on the baseline, with **6x improvement over the best prior CPU result** at scale.
 
