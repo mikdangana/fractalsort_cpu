@@ -8,3 +8,4 @@ build/
 *.so
 *.dll
 .numba_cache/
+_paper_src/
