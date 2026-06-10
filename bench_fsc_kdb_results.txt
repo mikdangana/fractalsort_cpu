@@ -1,0 +1,25 @@
+JIT warmup...
+Done.
+
+==============================================================================================================
+FSF vs FSC8 vs kdb+ radix  (p=32, lc=16, entry_bits=16, uint32)
+==============================================================================================================
+
+   e            n  lb   bins entry |       kdb+        FSF    FSF(4b)       FSC8 |       FSFA   FSFA(4b)      FSCA8 | FSFA/kdb
+------------------------------------------------------------------------------------------------------------------------
+  18      262,144   2  65536    16 |     42.5M/s      0.1M/s      0.0M/s     10.6M/s |      0.1M/s      0.0M/s     10.5M/s |   0.00x
+  20    1,048,576   4  65536    16 |     65.6M/s      0.4M/s      0.1M/s     39.0M/s |      0.2M/s      0.1M/s     20.5M/s |   0.00x
+  22    4,194,304   6  65536    16 |     66.1M/s      1.3M/s      0.4M/s     88.3M/s |      1.3M/s      0.4M/s     22.2M/s |   0.02x
+  24   16,777,216   8  65536    16 |     53.7M/s      5.0M/s      1.8M/s    102.1M/s |      4.5M/s      1.5M/s     22.9M/s |   0.08x
+
+FSF/FSC8       = bin sort only (scatter excluded)
+FSFA/FSCA8     = full pipeline: scatter + bin sort + reconstruct
+FSF            = direct histogram, int32 counters (256KB for 16-bit entries)
+FSF(4b)        = direct histogram, 4-bit packed counters (32KB for 16-bit entries)
+
+Environment:
+  Platform:    win32
+  Python:      3.14.0
+  Numba:       0.65.1
+  NumPy:       2.3.5
+  p=32, lc=16, n_runs=7
